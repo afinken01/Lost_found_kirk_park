@@ -205,13 +205,7 @@ nav{display:flex;gap:4px;align-items:center;}
 </head>
 <body>
 
-<script>
-// ══════════════════════════════════════════
-//  PASTE YOUR SUPABASE CREDENTIALS HERE
-// ══════════════════════════════════════════
-const SUPABASE_URL     = 'https://rlnrknawpkizvzxrnpnc.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJsbnJrbmF3cGtpenZ6eHJucG5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4Njc4MjYsImV4cCI6MjA5NDQ0MzgyNn0.HGkENpFUDUXGVvzZqbo6oSImsGgewGvnT62zw98EiQ4';
-</script>
+
 
 <!-- AD BANNER -->
 <div class="ad-banner-top" onclick="window.open('https://dadcooks.food','_blank')" style="cursor:pointer;">
@@ -400,6 +394,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 <div class="success-toast" id="toast"></div>
 
 <script>
+const SUPABASE_URL     = 'https://rlnrknawpkizvzxrnpnc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJsbnJrbmF3cGtpenZ6eHJucG5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4Njc4MjYsImV4cCI6MjA5NDQ0MzgyNn0.HGkENpFUDUXGVvzZqbo6oSImsGgewGvnT62zw98EiQ4';
 const {createClient}=supabase;
 const sb=createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 
