@@ -163,8 +163,9 @@ nav{display:flex;gap:4px;align-items:center;}
 .submit-btn.neutral{background:var(--green-dark);color:white;}
 .form-link{text-align:center;font-size:13px;color:var(--text-muted);margin-top:14px;}
 .form-link a{color:var(--green-mid);cursor:pointer;font-weight:500;}
-.form-error{color:var(--danger);font-size:13px;margin-bottom:12px;background:#fdecea;padding:9px 13px;border-radius:var(--radius-sm);display:none;}
-.form-error.visible{display:block;}
+.form-error{color:var(--danger);font-size:13px;margin-bottom:12px;background:#fdecea;border:1px solid #f5c6c2;padding:10px 14px;border-radius:var(--radius-sm);display:none;font-weight:500;}
+.form-error.visible{display:block;animation:shake .3s ease;}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
 
 .profile-page{background:white;border:1px solid var(--border);border-radius:var(--radius);padding:28px;}
 .profile-header{display:flex;align-items:center;gap:18px;margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid var(--border);}
@@ -452,21 +453,36 @@ function toggleAuth(mode){
   document.getElementById('auth-title').textContent=mode==='up'?'Create Account':'Sign In';
 }
 async function doSignIn(){
+  if(!sb){showErr('auth-error','Still loading — please try again in a moment.');return;}
   const email=document.getElementById('si-email').value.trim();
   const pass=document.getElementById('si-pass').value;
-  const{error}=await sb.auth.signInWithPassword({email,password:pass});
-  if(error){showErr('auth-error',error.message);return;}
-  closeModal('auth-modal');toast('Welcome back! 👋');
-  if(afterAuthCb){afterAuthCb();afterAuthCb=null;}
+  if(!email||!pass){showErr('auth-error','Please enter your email and password.');return;}
+  const btn=document.querySelector('#auth-signin .submit-btn');
+  btn.textContent='Signing in…';btn.disabled=true;
+  try{
+    const{error}=await sb.auth.signInWithPassword({email,password:pass});
+    if(error){showErr('auth-error',error.message);return;}
+    closeModal('auth-modal');toast('Welcome back! 👋');
+    if(afterAuthCb){afterAuthCb();afterAuthCb=null;}
+  }catch(e){showErr('auth-error','Something went wrong: '+e.message);}
+  finally{btn.textContent='Sign In';btn.disabled=false;}
 }
 async function doSignUp(){
+  if(!sb){showErr('auth-error','Still loading — please try again in a moment.');return;}
   const name=document.getElementById('su-name').value.trim();
   const email=document.getElementById('su-email').value.trim();
   const pass=document.getElementById('su-pass').value;
   if(!name){showErr('auth-error','Please enter your name.');return;}
-  const{data,error}=await sb.auth.signUp({email,password:pass});
-  if(error){showErr('auth-error',error.message);return;}
-  await sb.from('profiles').insert({id:data.user.id,name,email});
+  if(!email){showErr('auth-error','Please enter your email.');return;}
+  if(pass.length<6){showErr('auth-error','Password must be at least 6 characters.');return;}
+  const btn=document.querySelector('#auth-signup .submit-btn');
+  btn.textContent='Creating account…';btn.disabled=true;
+  try{
+    const{data,error}=await sb.auth.signUp({email,password:pass});
+    if(error){showErr('auth-error',error.message);return;}
+    await sb.from('profiles').insert({id:data.user.id,name,email});
+  }catch(e){showErr('auth-error','Something went wrong: '+e.message);return;}
+  finally{btn.textContent='Create Account';btn.disabled=false;}
   // show confirmation screen instead of closing
   document.getElementById('auth-signup').style.display='none';
   document.getElementById('auth-confirm').style.display='block';
