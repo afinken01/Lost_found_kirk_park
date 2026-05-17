@@ -701,6 +701,9 @@ function esc(s){if(!s)return'';return String(s).replace(/&/g,'&amp;').replace(/<
 function timeAgo(iso){if(!iso)return'';const d=Math.floor((Date.now()-new Date(iso))/86400000);return d===0?'Today':d===1?'Yesterday':d+'d ago';}
 
 // ── INIT ─────────────────────────────────────────────
+// Render sign-in buttons immediately — don't wait for Supabase auth state
+renderAuthArea();
+
 function renderAreas(){
   document.getElementById('area-tags').innerHTML=AREAS.map(a=>`<span class="area-badge" onclick="filterArea('${a}')">${a}</span>`).join('');
 }
