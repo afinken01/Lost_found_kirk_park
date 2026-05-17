@@ -396,8 +396,14 @@ nav{display:flex;gap:4px;align-items:center;}
 <script>
 const SUPABASE_URL     = 'https://rlnrknawpkizvzxrnpnc.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJsbnJrbmF3cGtpenZ6eHJucG5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4Njc4MjYsImV4cCI6MjA5NDQ0MzgyNn0.HGkENpFUDUXGVvzZqbo6oSImsGgewGvnT62zw98EiQ4';
-const {createClient}=supabase;
-const sb=createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+let sb;
+function initSupabase(){
+  if(window.supabase&&window.supabase.createClient){
+    sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+    return true;
+  }
+  return false;
+}
 
 let currentUser=null,currentProfile=null,currentTab='all',currentArea=null;
 let formType='found',activeMsgItem=null,msgSub=null,afterAuthCb=null;
@@ -412,15 +418,6 @@ const CAT_EMOJI={'Clothing & Shoes':'👟','Bags & Backpacks':'🎒','Sports Equ
   'Eyewear':'👓','Wallets & IDs':'💼','Toys & Kids Items':'🧸','Other':'📦'};
 
 // ── AUTH ────────────────────────────────────────────
-sb.auth.onAuthStateChange(async(_,session)=>{
-  currentUser=session?.user??null;
-  if(currentUser){
-    const{data}=await sb.from('profiles').select('*').eq('id',currentUser.id).single();
-    currentProfile=data;
-  }else{currentProfile=null;}
-  renderAuthArea();
-  renderItems();
-});
 
 function renderAuthArea(){
   const a=document.getElementById('auth-area');
@@ -697,9 +694,6 @@ function esc(s){if(!s)return'';return String(s).replace(/&/g,'&amp;').replace(/<
 function timeAgo(iso){if(!iso)return'';const d=Math.floor((Date.now()-new Date(iso))/86400000);return d===0?'Today':d===1?'Yesterday':d+'d ago';}
 
 // ── INIT ─────────────────────────────────────────────
-// Render sign-in buttons immediately — don't wait for Supabase auth state
-renderAuthArea();
-
 function renderAreas(){
   document.getElementById('area-tags').innerHTML=AREAS.map(a=>`<span class="area-badge" onclick="filterArea('${a}')">${a}</span>`).join('');
 }
@@ -708,8 +702,29 @@ function filterArea(area){
   document.querySelectorAll('.area-badge').forEach(b=>b.classList.toggle('active',b.textContent===area&&currentArea));
   renderItems();
 }
-renderAreas();
-renderItems();
+
+function startApp(){
+  if(!initSupabase()){
+    setTimeout(startApp,100);
+    return;
+  }
+  // Wire up auth state listener now that sb exists
+  sb.auth.onAuthStateChange(async(_,session)=>{
+    currentUser=session?.user??null;
+    if(currentUser){
+      const{data}=await sb.from('profiles').select('*').eq('id',currentUser.id).single();
+      currentProfile=data;
+    }else{currentProfile=null;}
+    renderAuthArea();
+    renderItems();
+  });
+  renderAreas();
+  renderItems();
+}
+
+// Show sign-in buttons immediately, start app when Supabase ready
+renderAuthArea();
+startApp();
 </script>
 </body>
 </html>
