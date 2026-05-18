@@ -426,9 +426,9 @@ function initSupabase(){
   if(window.supabase&&window.supabase.createClient){
     sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{
       auth:{
-        persistSession:true,
+        persistSession:false,
         detectSessionInUrl:false,
-        flowType:'implicit'
+        storageKey:'lf-app-v1'
       }
     });
     return true;
