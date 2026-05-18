@@ -868,12 +868,27 @@ function filterArea(area){
   renderItems();
 }
 
-function startApp(){
+async function startApp(){
   if(!initSupabase()){
     setTimeout(startApp,100);
     return;
   }
-  // Wire up auth state listener now that sb exists
+  renderAreas();
+  renderItems();
+
+  // Get initial session without onAuthStateChange to avoid deadlock
+  try{
+    const{data:{session}}=await sb.auth.getSession();
+    currentUser=session?.user??null;
+    if(currentUser){
+      const{data}=await sb.from('profiles').select('*').eq('id',currentUser.id).single();
+      currentProfile=data||{name:currentUser.email.split('@')[0],email:currentUser.email};
+      renderAuthArea();
+      renderItems();
+    }
+  }catch(e){console.error('getSession error:',e);}
+
+  // Wire up auth state listener after initial session is resolved
   sb.auth.onAuthStateChange(async(_,session)=>{
     try{
       currentUser=session?.user??null;
@@ -888,8 +903,6 @@ function startApp(){
       renderAuthArea();
     }
   });
-  renderAreas();
-  renderItems();
 }
 
 // Show sign-in buttons immediately, start app when Supabase ready
