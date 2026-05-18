@@ -488,14 +488,24 @@ async function doSignIn(){
   if(!email||!pass){showErr('auth-error','Please enter your email and password.');return;}
   const btn=document.querySelector('#auth-signin .submit-btn');
   if(btn){btn.textContent='Signing in…';btn.disabled=true;}
-  let success=false;
   try{
-    const{error}=await sb.auth.signInWithPassword({email,password:pass});
-    if(error){showErr('auth-error',error.message);return;}
-    success=true;
-  }catch(e){showErr('auth-error','Something went wrong: '+e.message);}
-  finally{if(btn&&!success){btn.textContent='Sign In';btn.disabled=false;}}
-  if(success){closeModal('auth-modal');toast('Welcome back! 👋');if(afterAuthCb){afterAuthCb();afterAuthCb=null;}}
+    // Use raw fetch to avoid Supabase JS promise hang bug
+    const res=await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=password',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':SUPABASE_ANON_KEY},
+      body:JSON.stringify({email,password:pass})
+    });
+    const data=await res.json();
+    if(!res.ok||data.error){showErr('auth-error',data.error_description||data.error||'Sign in failed.');if(btn){btn.textContent='Sign In';btn.disabled=false;}return;}
+    // Manually set session on the Supabase client
+    await sb.auth.setSession({access_token:data.access_token,refresh_token:data.refresh_token});
+    closeModal('auth-modal');
+    toast('Welcome back!');
+    if(afterAuthCb){afterAuthCb();afterAuthCb=null;}
+  }catch(e){
+    showErr('auth-error','Something went wrong: '+e.message);
+    if(btn){btn.textContent='Sign In';btn.disabled=false;}
+  }
 }
 async function doSignUp(){
   if(!sb){showErr('auth-error','Still loading — please try again in a moment.');return;}
