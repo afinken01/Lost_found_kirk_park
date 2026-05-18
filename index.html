@@ -422,13 +422,14 @@ const SUPABASE_URL     = 'https://rlnrknawpkizvzxrnpnc.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJsbnJrbmF3cGtpenZ6eHJucG5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4Njc4MjYsImV4cCI6MjA5NDQ0MzgyNn0.HGkENpFUDUXGVvzZqbo6oSImsGgewGvnT62zw98EiQ4';
 let sb;
 function initSupabase(){
-  if(sb)return true; // already initialized, never create a second instance
+  if(sb)return true;
   if(window.supabase&&window.supabase.createClient){
+    // Use a unique storageKey to avoid conflicts with any stale client instances
     sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{
       auth:{
         persistSession:false,
         detectSessionInUrl:false,
-        storageKey:'lf-app-v1'
+        storageKey:'lf-'+Math.random().toString(36).slice(2)
       }
     });
     return true;
@@ -498,9 +499,13 @@ async function doSignIn(){
     });
     const data=await res.json();
     if(!res.ok||data.error){showErr('auth-error',data.error_description||data.error||'Sign in failed.');if(btn){btn.textContent='Sign In';btn.disabled=false;}return;}
-    // Manually set session on the Supabase client
-    await sb.auth.setSession({access_token:data.access_token,refresh_token:data.refresh_token});
+    // Store tokens and update app state manually (persistSession:false means onAuthStateChange may not fire)
+    currentUser={id:data.user.id,email:data.user.email};
+    const{data:profile}=await sb.from('profiles').select('*').eq('id',data.user.id).single();
+    currentProfile=profile||{name:data.user.email.split('@')[0],email:data.user.email};
     closeModal('auth-modal');
+    renderAuthArea();
+    renderItems();
     toast('Welcome back!');
     if(afterAuthCb){afterAuthCb();afterAuthCb=null;}
   }catch(e){
