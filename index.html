@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Kirkwood Park Lost & Found</title>
-<script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -858,14 +858,18 @@ function startApp(){
   }
   // Wire up auth state listener now that sb exists
   sb.auth.onAuthStateChange(async(_,session)=>{
-    currentUser=session?.user??null;
-    if(currentUser){
-      const{data}=await sb.from('profiles').select('*').eq('id',currentUser.id).single();
-      // Fall back to a profile built from the auth user if the row is missing
-      currentProfile=data||{name:currentUser.email.split('@')[0],email:currentUser.email};
-    }else{currentProfile=null;}
-    renderAuthArea();
-    renderItems();
+    try{
+      currentUser=session?.user??null;
+      if(currentUser){
+        const{data}=await sb.from('profiles').select('*').eq('id',currentUser.id).single();
+        currentProfile=data||{name:currentUser.email.split('@')[0],email:currentUser.email};
+      }else{currentProfile=null;}
+      renderAuthArea();
+      renderItems();
+    }catch(e){
+      console.error('onAuthStateChange error:',e);
+      renderAuthArea();
+    }
   });
   renderAreas();
   renderItems();
