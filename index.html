@@ -422,6 +422,7 @@ const SUPABASE_URL     = 'https://rlnrknawpkizvzxrnpnc.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJsbnJrbmF3cGtpenZ6eHJucG5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4Njc4MjYsImV4cCI6MjA5NDQ0MzgyNn0.HGkENpFUDUXGVvzZqbo6oSImsGgewGvnT62zw98EiQ4';
 let sb;
 function initSupabase(){
+  if(sb)return true; // already initialized, never create a second instance
   if(window.supabase&&window.supabase.createClient){
     sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{
       auth:{
