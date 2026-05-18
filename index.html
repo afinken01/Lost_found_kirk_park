@@ -202,6 +202,29 @@ nav{display:flex;gap:4px;align-items:center;}
   .stat-card{min-width:calc(50% - 6px);}
   #msg-modal .modal{max-width:100%;}
 }
+
+/* ── INBOX / CONVERSATIONS ── */
+.profile-tabs{display:flex;gap:6px;margin-bottom:20px;border-bottom:1.5px solid var(--border);padding-bottom:0;}
+.profile-tab{background:none;border:none;border-bottom:2.5px solid transparent;margin-bottom:-1.5px;padding:8px 16px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;color:var(--text-muted);cursor:pointer;transition:color .15s,border-color .15s;}
+.profile-tab.active{color:var(--green-dark);border-bottom-color:var(--green-dark);}
+.unread-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--amber);margin-left:6px;vertical-align:middle;}
+
+.conv-list{display:flex;flex-direction:column;gap:8px;}
+.conv-row{display:flex;align-items:center;gap:12px;background:var(--stone-light);border-radius:var(--radius-sm);padding:12px 14px;cursor:pointer;transition:background .15s;border:1.5px solid transparent;}
+.conv-row:hover{background:var(--green-light);}
+.conv-row.unread{border-color:var(--amber);background:#fffaf4;}
+.conv-emoji{font-size:22px;flex-shrink:0;}
+.conv-info{flex:1;min-width:0;}
+.conv-name{font-size:14px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.conv-preview{font-size:12px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;}
+.conv-meta{font-size:11px;color:var(--text-muted);flex-shrink:0;text-align:right;}
+.conv-unread-badge{background:var(--amber);color:white;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;margin-top:4px;display:inline-block;}
+
+.conv-back{background:none;border:none;color:var(--green-mid);font-size:13px;font-weight:600;cursor:pointer;padding:0;margin-bottom:14px;display:flex;align-items:center;gap:5px;}
+.conv-back:hover{color:var(--green-dark);}
+.conv-header-info{background:var(--green-light);border-radius:var(--radius-sm);padding:11px 14px;margin-bottom:14px;font-size:13px;color:var(--green-dark);}
+.conv-header-info strong{display:block;font-size:14px;margin-bottom:2px;}
+.conv-header-info span{color:var(--text-muted);font-size:12px;}
 </style>
 </head>
 <body>
@@ -627,23 +650,68 @@ async function submitReport(){
 }
 
 // ── MESSAGING ────────────────────────────────────────
+// Opens a private 1-on-1 thread between the current user and the item poster.
+// Creates a conversation row if one doesn't exist yet.
 async function openMsg(itemId){
+  if(!currentUser){openAuthModal('in');return;}
   const{data:item}=await sb.from('items').select('*,profiles(name)').eq('id',itemId).single();
   if(!item)return;
+  // Prevent posting owner from messaging their own item
+  if(item.user_id===currentUser.id){toast('This is your own post.');return;}
   activeMsgItem=item;
+
+  // Get or create conversation
+  let{data:conv}=await sb.from('conversations')
+    .select('*').eq('item_id',itemId).eq('inquirer_id',currentUser.id).single();
+  if(!conv){
+    const{data:newConv,error}=await sb.from('conversations')
+      .insert({item_id:itemId,poster_id:item.user_id,inquirer_id:currentUser.id})
+      .select().single();
+    if(error){toast('Could not start conversation.');return;}
+    conv=newConv;
+  }
+  activeMsgItem._convId=conv.id;
+  activeMsgItem._receiverId=item.user_id;
+
   const icon=CAT_EMOJI[item.category]||'📦';
   document.getElementById('msg-item-preview').innerHTML=`<div class="msg-item-icon">${icon}</div><div class="msg-item-info"><strong>${esc(item.name)}</strong><span>${esc(item.location)} · Posted by ${esc(item.profiles?.name||'Community member')}</span></div>`;
   openModal('msg-modal');
-  await loadMessages(itemId);
+  await loadMessages(conv.id);
+
   if(msgSub)sb.removeChannel(msgSub);
-  msgSub=sb.channel('msgs-'+itemId)
-    .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:'item_id=eq.'+itemId},p=>appendMsg(p.new))
+  msgSub=sb.channel('conv-'+conv.id)
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:'conversation_id=eq.'+conv.id},p=>appendMsg(p.new))
     .subscribe();
 }
-async function loadMessages(itemId){
+
+// Opens a conversation from the inbox (poster side or inquirer revisiting)
+async function openConversation(convId){
+  const{data:conv}=await sb.from('conversations')
+    .select('*,items(*,profiles(name))').eq('id',convId).single();
+  if(!conv)return;
+  const item=conv.items;
+  activeMsgItem={...item,_convId:convId,_receiverId:conv.poster_id===currentUser.id?conv.inquirer_id:conv.poster_id};
+
+  // Mark messages in this conversation as read
+  await sb.from('messages').update({read:true})
+    .eq('conversation_id',convId).eq('receiver_id',currentUser.id);
+
+  const icon=CAT_EMOJI[item.category]||'📦';
+  document.getElementById('msg-item-preview').innerHTML=`<div class="msg-item-icon">${icon}</div><div class="msg-item-info"><strong>${esc(item.name)}</strong><span>${esc(item.location)} · Posted by ${esc(item.profiles?.name||'Community member')}</span></div>`;
+  openModal('msg-modal');
+  await loadMessages(convId);
+
+  if(msgSub)sb.removeChannel(msgSub);
+  msgSub=sb.channel('conv-'+convId)
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:'conversation_id=eq.'+convId},p=>appendMsg(p.new))
+    .subscribe();
+}
+
+async function loadMessages(convId){
   const thread=document.getElementById('msg-thread');
   thread.innerHTML='<div class="msg-empty">Loading…</div>';
-  const{data:msgs}=await sb.from('messages').select('*,profiles(name)').eq('item_id',itemId).order('created_at',{ascending:true});
+  const{data:msgs}=await sb.from('messages')
+    .select('*,profiles(name)').eq('conversation_id',convId).order('created_at',{ascending:true});
   if(!msgs||!msgs.length){thread.innerHTML='<div class="msg-empty">No messages yet — say hello!</div>';return;}
   thread.innerHTML='';
   msgs.forEach(m=>appendMsg(m,false));
@@ -663,33 +731,96 @@ async function sendMessage(){
   const input=document.getElementById('msg-input');
   const body=input.value.trim();
   if(!body||!activeMsgItem||!currentUser)return;
+  if(!activeMsgItem._convId){toast('No active conversation.');return;}
   input.value='';
-  await sb.from('messages').insert({item_id:activeMsgItem.id,user_id:currentUser.id,body});
+  await sb.from('messages').insert({
+    item_id:activeMsgItem.id,
+    conversation_id:activeMsgItem._convId,
+    user_id:currentUser.id,
+    receiver_id:activeMsgItem._receiverId,
+    body
+  });
 }
 
-// ── PROFILE PAGE ─────────────────────────────────────
-async function renderProfilePage(){
+// -- PROFILE PAGE --
+let profileTab='posts';
+
+async function renderProfilePage(tab){
   if(!currentUser||!currentProfile){showPage('browse');return;}
+  if(tab)profileTab=tab;
   const sec=document.getElementById('profile-section');
   const ini=(currentProfile.name||currentUser.email).slice(0,2).toUpperCase();
-  const{data:myItems}=await sb.from('items').select('*').eq('user_id',currentUser.id).order('created_at',{ascending:false});
-  const rows=(myItems&&myItems.length)?myItems.map(it=>`<div class="my-item-row">
-    <div class="my-item-emoji">${CAT_EMOJI[it.category]||'📦'}</div>
-    <div class="my-item-info"><strong>${esc(it.name)}</strong><span>${esc(it.location)} · <span class="badge ${it.type}" style="font-size:10px;">${it.type}</span></span></div>
-    <div style="display:flex;gap:8px;">${!it.claimed?`<button class="btn-sm resolve" onclick="markClaimed('${it.id}')">Mark Resolved</button>`:''}<button class="btn-sm delete" onclick="deleteItem('${it.id}')">Delete</button></div>
-  </div>`).join(''):'<p style="font-size:14px;color:var(--text-muted);">You haven\'t posted any items yet.</p>';
+
+  const{count:unreadCount}=await sb.from('messages')
+    .select('*',{count:'exact',head:true}).eq('receiver_id',currentUser.id).eq('read',false);
+  const unreadBadge=unreadCount>0?'<span class="unread-dot"></span>':'';
+
+  const tabBar=`<div class="profile-tabs">
+    <button class="profile-tab ${profileTab==='posts'?'active':''}" onclick="renderProfilePage('posts')">My Posts</button>
+    <button class="profile-tab ${profileTab==='messages'?'active':''}" onclick="renderProfilePage('messages')">Messages${unreadBadge}</button>
+  </div>`;
+
+  let body='';
+  if(profileTab==='posts'){
+    const{data:myItems}=await sb.from('items').select('*').eq('user_id',currentUser.id).order('created_at',{ascending:false});
+    body=(myItems&&myItems.length)?myItems.map(it=>`<div class="my-item-row">
+      <div class="my-item-emoji">${CAT_EMOJI[it.category]||'\u{1F4E6}'}</div>
+      <div class="my-item-info"><strong>${esc(it.name)}</strong><span>${esc(it.location)} &middot; <span class="badge ${it.type}" style="font-size:10px;">${it.type}</span></span></div>
+      <div style="display:flex;gap:8px;">${!it.claimed?`<button class="btn-sm resolve" onclick="markClaimed('${it.id}')">Mark Resolved</button>`:''}<button class="btn-sm delete" onclick="deleteItem('${it.id}')">Delete</button></div>
+    </div>`).join(''):'<p style="font-size:14px;color:var(--text-muted);">You haven\'t posted any items yet.</p>';
+  } else {
+    body=await buildInboxHTML();
+  }
 
   sec.innerHTML=`<div class="profile-page">
     <div class="profile-header">
       <div class="profile-avatar-lg">${ini}</div>
       <div class="profile-info"><h2>${esc(currentProfile.name)}</h2><p>${esc(currentUser.email)}</p></div>
     </div>
-    <div class="section-title">My Posts</div>${rows}
+    ${tabBar}${body}
   </div>`;
 }
-async function markClaimed(id){await sb.from('items').update({claimed:true}).eq('id',id);renderProfilePage();toast('Marked as resolved 🎉');}
-async function deleteItem(id){if(!confirm('Delete this post?'))return;await sb.from('items').delete().eq('id',id);renderProfilePage();toast('Post deleted.');}
 
+async function buildInboxHTML(){
+  const{data:convs}=await sb.from('conversations')
+    .select('*,items(id,name,category,type),poster:profiles!conversations_poster_id_fkey(name),inquirer:profiles!conversations_inquirer_id_fkey(name)')
+    .or(`poster_id.eq.${currentUser.id},inquirer_id.eq.${currentUser.id}`)
+    .order('created_at',{ascending:false});
+
+  if(!convs||!convs.length)return '<p style="font-size:14px;color:var(--text-muted);margin-top:8px;">No messages yet.</p>';
+
+  const rows=await Promise.all(convs.map(async conv=>{
+    const{data:lastMsgs}=await sb.from('messages')
+      .select('body,created_at,read,receiver_id').eq('conversation_id',conv.id)
+      .order('created_at',{ascending:false}).limit(1);
+    const last=lastMsgs&&lastMsgs[0];
+    const{count:unread}=await sb.from('messages')
+      .select('*',{count:'exact',head:true})
+      .eq('conversation_id',conv.id).eq('receiver_id',currentUser.id).eq('read',false);
+
+    const isPoster=conv.poster_id===currentUser.id;
+    const otherName=isPoster?(conv.inquirer?.name||'Someone'):(conv.poster?.name||'Poster');
+    const icon=CAT_EMOJI[conv.items?.category]||'\u{1F4E6}';
+    const itemName=conv.items?.name||'Item';
+    const preview=last?esc(last.body.slice(0,60))+'...':'No messages yet';
+    const when=last?timeAgo(last.created_at):'';
+    const hasUnread=unread>0;
+
+    return `<div class="conv-row${hasUnread?' unread':''}" onclick="openConversation('${conv.id}')">
+      <div class="conv-emoji">${icon}</div>
+      <div class="conv-info">
+        <div class="conv-name">${esc(itemName)} <span style="font-weight:400;color:var(--text-muted);font-size:12px;">&middot; ${esc(otherName)}</span></div>
+        <div class="conv-preview">${preview}</div>
+      </div>
+      <div class="conv-meta">${when}${hasUnread?`<div><span class="conv-unread-badge">${unread} new</span></div>`:''}
+      </div>
+    </div>`;
+  }));
+  return `<div class="conv-list">${rows.join('')}</div>`;
+}
+
+async function markClaimed(id){await sb.from('items').update({claimed:true}).eq('id',id);renderProfilePage();toast('Marked as resolved!');}
+async function deleteItem(id){if(!confirm('Delete this post?'))return;await sb.from('items').delete().eq('id',id);renderProfilePage();toast('Post deleted.');}
 // ── ADS ──────────────────────────────────────────────
 function submitAdInquiry(){closeModal('ad-modal');toast('Thanks! We\'ll be in touch soon.');}
 
@@ -730,7 +861,8 @@ function startApp(){
     currentUser=session?.user??null;
     if(currentUser){
       const{data}=await sb.from('profiles').select('*').eq('id',currentUser.id).single();
-      currentProfile=data;
+      // Fall back to a profile built from the auth user if the row is missing
+      currentProfile=data||{name:currentUser.email.split('@')[0],email:currentUser.email};
     }else{currentProfile=null;}
     renderAuthArea();
     renderItems();
