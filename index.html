@@ -551,6 +551,7 @@ function showPage(page){
 // ── ITEMS ────────────────────────────────────────────
 async function renderItems(){
   const grid=document.getElementById('items-grid');
+  if(!sb){grid.innerHTML='<div class="empty-state"><div class="ei">⏳</div><p>Loading…</p></div>';return;}
   grid.innerHTML='<div class="empty-state"><div class="ei">⏳</div><p>Loading…</p></div>';
   const{data:items}=await sb.from('items').select('*,profiles(name)').order('created_at',{ascending:false});
   if(!items){grid.innerHTML='<div class="empty-state"><div class="ei">⚠️</div><p>Could not load items. Check your Supabase credentials.</p></div>';return;}
@@ -881,17 +882,20 @@ async function startApp(){
   renderAreas();
   renderItems();
 
-  // Get initial session without onAuthStateChange to avoid deadlock
+  // Get initial session with a timeout so items always load even if getSession hangs
   try{
-    const{data:{session}}=await sb.auth.getSession();
-    currentUser=session?.user??null;
+    const sessionResult=await Promise.race([
+      sb.auth.getSession(),
+      new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),3000))
+    ]);
+    currentUser=sessionResult?.data?.session?.user??null;
     if(currentUser){
       const{data}=await sb.from('profiles').select('*').eq('id',currentUser.id).single();
       currentProfile=data||{name:currentUser.email.split('@')[0],email:currentUser.email};
       renderAuthArea();
       renderItems();
     }
-  }catch(e){console.error('getSession error:',e);}
+  }catch(e){console.error('getSession error/timeout:',e);}
 
   // Wire up auth state listener after initial session is resolved
   sb.auth.onAuthStateChange(async(_,session)=>{
