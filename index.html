@@ -423,7 +423,13 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 let sb;
 function initSupabase(){
   if(window.supabase&&window.supabase.createClient){
-    sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+    sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{
+      auth:{
+        persistSession:true,
+        detectSessionInUrl:false,
+        flowType:'implicit'
+      }
+    });
     return true;
   }
   return false;
