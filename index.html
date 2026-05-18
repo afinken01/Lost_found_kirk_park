@@ -499,7 +499,11 @@ async function doSignIn(){
     });
     const data=await res.json();
     if(!res.ok||data.error){showErr('auth-error',data.error_description||data.error||'Sign in failed.');if(btn){btn.textContent='Sign In';btn.disabled=false;}return;}
-    // Store tokens and update app state manually (persistSession:false means onAuthStateChange may not fire)
+    // Rebuild the Supabase client with the access token in global headers so RLS auth.uid() works
+    sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{
+      auth:{persistSession:false,detectSessionInUrl:false,storageKey:'lf-'+Math.random().toString(36).slice(2)},
+      global:{headers:{Authorization:'Bearer '+data.access_token}}
+    });
     currentUser={id:data.user.id,email:data.user.email};
     const{data:profile}=await sb.from('profiles').select('*').eq('id',data.user.id).single();
     currentProfile=profile||{name:data.user.email.split('@')[0],email:data.user.email};
@@ -524,18 +528,35 @@ async function doSignUp(){
   const btn=document.querySelector('#auth-signup .submit-btn');
   btn.textContent='Creating account…';btn.disabled=true;
   try{
-    const{data,error}=await sb.auth.signUp({email,password:pass});
-    if(error){showErr('auth-error',error.message);return;}
-    await sb.from('profiles').insert({id:data.user.id,name,email});
-  }catch(e){showErr('auth-error','Something went wrong: '+e.message);return;}
-  finally{btn.textContent='Create Account';btn.disabled=false;}
-  // show confirmation screen instead of closing
+    const res=await fetch(SUPABASE_URL+'/auth/v1/signup',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':SUPABASE_ANON_KEY},
+      body:JSON.stringify({email,password:pass})
+    });
+    const data=await res.json();
+    if(!res.ok||data.error){showErr('auth-error',data.error_description||data.error||'Sign up failed.');btn.textContent='Create Account';btn.disabled=false;return;}
+    // Insert profile using a temporary authed client
+    const authedSb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{
+      auth:{persistSession:false,detectSessionInUrl:false,storageKey:'lf-'+Math.random().toString(36).slice(2)},
+      global:{headers:{Authorization:'Bearer '+data.access_token}}
+    });
+    await authedSb.from('profiles').insert({id:data.user.id,name,email});
+  }catch(e){showErr('auth-error','Something went wrong: '+e.message);btn.textContent='Create Account';btn.disabled=false;return;}
+  btn.textContent='Create Account';btn.disabled=false;
   document.getElementById('auth-signup').style.display='none';
   document.getElementById('auth-confirm').style.display='block';
   document.getElementById('auth-title').textContent='Almost there!';
   document.getElementById('confirm-email-display').textContent=email;
 }
-async function doSignOut(){await sb.auth.signOut();showPage('browse');toast('Signed out. See you soon!');}
+async function doSignOut(){
+  // Rebuild an unauthenticated client
+  sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{
+    auth:{persistSession:false,detectSessionInUrl:false,storageKey:'lf-'+Math.random().toString(36).slice(2)}
+  });
+  currentUser=null;currentProfile=null;
+  renderAuthArea();renderItems();
+  showPage('browse');toast('Signed out. See you soon!');
+}
 function requireAuth(cb){if(currentUser){cb();return;}afterAuthCb=cb;openAuthModal('in');}
 
 // ── PAGES ────────────────────────────────────────────
